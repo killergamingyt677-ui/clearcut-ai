@@ -5,7 +5,10 @@ import { useToast } from "@/hooks/use-toast";
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const WEBHOOK_URL = "https://pankaj-bot.app.n8n.cloud/webhook/background_remover";
+
+// Use local backend API for better error handling and CORS management
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const WEBHOOK_URL = `${API_BASE_URL}/webhook/remove-bg`;
 
 const UploadZone = () => {
   const [dragActive, setDragActive] = useState(false);
@@ -45,28 +48,46 @@ const UploadZone = () => {
     setError(null);
     
     try {
-      // Convert file to binary format (ArrayBuffer)
-      const arrayBuffer = await file.arrayBuffer();
-      
-      // Create FormData and append the binary data
+      // Create FormData with the image file
       const formData = new FormData();
       formData.append("image", file);
-      formData.append("fileName", file.name);
-      formData.append("fileType", file.type);
       
-      // Send the request with binary data
+      console.log("Sending request to:", WEBHOOK_URL);
+      console.log("File details:", {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      });
+
+      // Send the request to local backend
       const response = await fetch(WEBHOOK_URL, {
         method: "POST",
         body: formData,
+        // Let browser set Content-Type header with proper boundary
       });
 
-      if (!response.ok) {
-        throw new Error(`Server responded with status: ${response.status}`);
+      console.log("Response status:", response.status);
+
+      // Try to get response as JSON first, fallback to text
+      let result;
+      const contentType = response.headers.get("content-type");
+      
+      if (contentType?.includes("application/json")) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        console.error("Non-JSON response:", text);
+        throw new Error(`Server responded with non-JSON: ${text}`);
       }
 
-      const result = await response.json();
+      if (!response.ok) {
+        console.error("Error response:", result);
+        throw new Error(result.error || `Server error (${response.status})`);
+      }
+
+      console.log("Background removal response:", result);
       
-      // Handle the n8n response format: { "url": "..." }
+      // Verify the response has the URL
       if (!result.url) {
         throw new Error("Invalid response format: missing URL");
       }
@@ -89,13 +110,12 @@ const UploadZone = () => {
       localStorage.setItem("bgRemovalHistory", JSON.stringify(existingHistory));
       
       toast({
-        title: "Success!",
-        description: "Background removed successfully!",
+        title: "Success! 🎉",
+        description: "Background removed successfully! Ready to download.",
       });
-
-      console.log("Background removal response:", result);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to process image";
+      console.error("Full error object:", err);
       setError(errorMessage);
       toast({
         title: "Error",
@@ -109,8 +129,43 @@ const UploadZone = () => {
 
   const downloadImage = async (url: string, fileName: string) => {
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Failed to download image");
+      console.log("Downloading image from:", url);
+      
+      // Option 1: Direct download (if CORS allows)
+      try {
+        const response = await fetch(url, {
+          mode: 'cors',
+          credentials: 'omit',
+        });
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = `removed-bg-${fileName}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+          
+          toast({
+            title: "Success",
+            description: "Image downloaded successfully!",
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn("Direct download failed, trying via backend...");
+      }
+
+      // Option 2: Download via backend proxy (handles CORS)
+      const downloadUrl = `${API_BASE_URL}/download-image?url=${encodeURIComponent(url)}`;
+      const response = await fetch(downloadUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download image (${response.status})`);
+      }
       
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -121,8 +176,14 @@ const UploadZone = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
+      
+      toast({
+        title: "Success",
+        description: "Image downloaded successfully!",
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to download image";
+      console.error("Download error:", err);
       toast({
         title: "Download Error",
         description: errorMessage,
