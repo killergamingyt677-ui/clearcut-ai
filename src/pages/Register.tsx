@@ -21,22 +21,26 @@ const Register = () => {
   const handleGoogleSuccess = (credentialResponse: GoogleCredentialResponse) => {
     try {
       if (!credentialResponse.credential) {
-        throw new Error("No credential received");
+        throw new Error("No credential received from Google");
       }
 
       const decoded = parseGoogleToken(credentialResponse.credential);
       
       if (!decoded) {
-        throw new Error("Failed to parse token");
+        throw new Error("Failed to parse Google token");
       }
 
       const userData = {
-        id: decoded.sub,
+        id: decoded.sub || decoded.jti,
         email: decoded.email,
-        name: decoded.name,
-        picture: decoded.picture,
+        name: decoded.name || decoded.given_name || "User",
+        picture: decoded.picture || "",
         loginTime: new Date().toISOString(),
       };
+
+      if (!userData.email) {
+        throw new Error("Email not found in token");
+      }
 
       storeUserData(userData, credentialResponse.credential);
 
@@ -49,19 +53,23 @@ const Register = () => {
         navigate("/dashboard");
       }, 500);
     } catch (error) {
-      console.error("Google signup error:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Google signup error:", errorMessage);
+      console.error("Full error:", error);
       toast({
         title: "Error",
-        description: "Failed to sign up with Google. Please try again.",
+        description: errorMessage || "Failed to sign up with Google. Please try again.",
         variant: "destructive",
       });
     }
   };
 
   const handleGoogleError = () => {
+    const errorMessage = "Google signup failed - check console for details";
+    console.error("Google OAuth error - check your Google Cloud setup");
     toast({
       title: "Error",
-      description: "Google signup failed. Please try again.",
+      description: `${errorMessage}. Ensure you're using a test account.`,
       variant: "destructive",
     });
   };
