@@ -7,7 +7,7 @@ const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 // Use local backend API for better error handling and CORS management
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 const WEBHOOK_URL = `${API_BASE_URL}/webhook/remove-bg`;
 
 const UploadZone = () => {

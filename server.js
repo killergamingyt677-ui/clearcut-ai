@@ -15,7 +15,7 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 const N8N_WEBHOOK_URL = "https://pankaj-bot.app.n8n.cloud/webhook/background_remover";
 
 // Middleware
