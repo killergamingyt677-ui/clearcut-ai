@@ -36,8 +36,16 @@ const Footer = () => (
           </div>
         </div>
       </div>
-      <div className="mt-10 pt-6 border-t border-border/50 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} ZeroBG AI. All rights reserved.
+      <div className="mt-10 pt-6 border-t border-border/50">
+        <div className="mb-6">
+          <p className="text-sm text-muted-foreground text-center">
+            <span className="font-semibold text-foreground">Website Owner:</span> Pankaj Kumar<br />
+            <span className="text-xs">First Year CSE Student | NIT Durgapur</span>
+          </p>
+        </div>
+        <div className="text-center text-xs text-muted-foreground">
+          © {new Date().getFullYear()} ZeroBG AI. All rights reserved. Built with passion by Pankaj Kumar.
+        </div>
       </div>
     </div>
   </footer>

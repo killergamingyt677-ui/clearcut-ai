@@ -88,13 +88,41 @@ app.post('/webhook/remove-bg', upload.single('image'), async (req, res) => {
       });
     }
 
-    const n8nData = await n8nResponse.json();
+    // Get response text first to debug
+    const responseText = await n8nResponse.text();
+    console.log('N8N Response Text:', responseText);
+    
+    let n8nData;
+    try {
+      n8nData = JSON.parse(responseText);
+    } catch (parseErr) {
+      console.error('Failed to parse N8N response as JSON:', parseErr.message);
+      console.error('Raw response:', responseText);
+      
+      // If response is empty or just whitespace, n8n might have sent a 200 but no data
+      if (!responseText || responseText.trim() === '') {
+        console.warn('N8N returned empty response. This might be a redirect or incomplete processing.');
+        return res.status(202).json({
+          success: true,
+          message: 'Image processing started',
+          status: 'processing',
+          note: 'N8N webhook accepted the request. Check n8n logs for processing status.'
+        });
+      }
+      
+      throw new Error(`Invalid JSON response from n8n: ${parseErr.message}`);
+    }
+    
     console.log('N8N Response Data:', n8nData);
 
     if (!n8nData.url) {
+      console.warn('N8N response missing URL field. Response:', n8nData);
+      
+      // Return a more helpful error with what we got
       return res.status(400).json({
         error: 'Invalid response from n8n: missing URL',
-        response: n8nData,
+        receivedData: n8nData,
+        note: 'Check that your n8n webhook is configured to return a URL in the response'
       });
     }
 
