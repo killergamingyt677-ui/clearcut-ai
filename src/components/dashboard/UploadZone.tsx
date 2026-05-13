@@ -6,7 +6,10 @@ import { useToast } from "@/hooks/use-toast";
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
-// Use local backend API for better error handling and CORS management
+// N8N Production webhook for background removal
+const N8N_WEBHOOK_URL = "https://pankajkumar8454.app.n8n.cloud/webhook/remove-background";
+
+// Legacy local backend API (if needed for fallback)
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 const WEBHOOK_URL = `${API_BASE_URL}/webhook/remove-bg`;
 
@@ -48,59 +51,77 @@ const UploadZone = () => {
     setError(null);
     
     try {
-      // Create FormData with the image file
-      const formData = new FormData();
-      formData.append("image", file);
+      // Read the file as binary format
+      const arrayBuffer = await file.arrayBuffer();
+      const binaryData = new Uint8Array(arrayBuffer);
       
-      console.log("Sending request to:", WEBHOOK_URL);
+      console.log("Sending request to:", N8N_WEBHOOK_URL);
       console.log("File details:", {
         name: file.name,
         type: file.type,
         size: file.size,
       });
 
-      // Send the request to local backend
-      const response = await fetch(WEBHOOK_URL, {
+      // Send the image in binary format to the N8N webhook
+      const response = await fetch(N8N_WEBHOOK_URL, {
         method: "POST",
-        body: formData,
-        // Let browser set Content-Type header with proper boundary
+        headers: {
+          "Content-Type": file.type || "image/jpeg",
+        },
+        body: binaryData,
       });
 
-      console.log("Response status:", response.status);
+      console.log("Webhook Response status:", response.status);
 
-      // Try to get response as JSON first, fallback to text
+      // Parse the N8N webhook response as JSON
       let result;
       const contentType = response.headers.get("content-type");
+      const responseText = await response.text();
       
-      if (contentType?.includes("application/json")) {
-        result = await response.json();
-      } else {
-        const text = await response.text();
-        console.error("Non-JSON response:", text);
-        throw new Error(`Server responded with non-JSON: ${text}`);
-      }
-
+      console.log("N8N Raw Response:", responseText);
+      console.log("Content-Type:", contentType);
+      
       if (!response.ok) {
-        console.error("Error response:", result);
-        throw new Error(result.error || `Server error (${response.status})`);
+        console.error("Webhook error response:", responseText);
+        throw new Error(`Webhook returned error (${response.status}): ${responseText}`);
       }
 
-      console.log("Background removal response:", result);
+      // Try to parse JSON response
+      if (responseText && contentType?.includes("application/json")) {
+        try {
+          result = JSON.parse(responseText);
+          console.log("N8N Response JSON:", result);
+        } catch (parseErr) {
+          console.error("Failed to parse JSON:", parseErr);
+          throw new Error(`Invalid JSON response from webhook: ${responseText}`);
+        }
+      } else if (responseText) {
+        console.error("Received non-JSON response:", responseText);
+        throw new Error(`Webhook returned non-JSON response: ${responseText}`);
+      } else {
+        throw new Error("Webhook returned an empty response");
+      }
+
+      // Extract the URL from N8N response format: { url: "..." }
+      const processedImageUrl = result?.url;
       
-      // Verify the response has the URL
-      if (!result.url) {
-        throw new Error("Invalid response format: missing URL");
+      if (!processedImageUrl) {
+        console.error("Response structure:", result);
+        throw new Error("Invalid response format: missing 'url' field. Expected format: { url: '...' }");
       }
 
+      console.log("Background removal successful!");
+      console.log("Processed image URL:", processedImageUrl);
+      
       // Store the processed image URL
-      setProcessedImageUrl(result.url);
+      setProcessedImageUrl(processedImageUrl);
       
       // Store in local storage
       const historyItem = {
         id: Date.now(),
         originalFileName: file.name,
         originalFileType: file.type,
-        processedImageUrl: result.url,
+        processedImageUrl: processedImageUrl,
         originalPreview: preview,
         timestamp: new Date().toISOString(),
       };
